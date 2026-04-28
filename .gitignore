@@ -1,0 +1,12 @@
+# Nodes
+node_modules/
+
+# .NET
+bin/
+obj/
+
+# VS Code
+.vscode/
+
+# Logs
+*.log

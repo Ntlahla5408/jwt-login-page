@@ -59,33 +59,21 @@ namespace JWT.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Register(AddUserDto addUser)
         {
-            if (string.IsNullOrWhiteSpace(addUser.Username) ||
-                string.IsNullOrWhiteSpace(addUser.Email) ||
-                string.IsNullOrWhiteSpace(addUser.Password) ||
-                string.IsNullOrWhiteSpace(addUser.ConfirmPassword))
+            // ApiController performs the DataAnnotations validation on the DTO.
+            // BCrypt's standard password format supports at most 72 UTF-8 bytes.
+            if (Encoding.UTF8.GetByteCount(addUser.Password) > 72)
             {
-                return BadRequest("Username, email and password are required.");
+                return BadRequest("Password must not exceed 72 UTF-8 bytes.");
             }
 
-            if (addUser.Password.Length < 12)
-            {
-                return BadRequest("Password must contain at least 12 characters.");
-            }
-
-            if (!string.Equals(addUser.Password, addUser.ConfirmPassword, StringComparison.Ordinal))
-            {
-                return BadRequest("Passwords do not match.");
-            }
-
-            var role = addUser.Role?.Trim();
-            if (string.IsNullOrWhiteSpace(role) ||
-                !ValidRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
+            var role = addUser.Role.Trim();
+            if (!ValidRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
             {
                 return BadRequest("Role must be Admin, Doctor, or Assistant.");
             }
 
             var username = addUser.Username.Trim();
-            var email = addUser.Email.Trim();
+            var email = addUser.Email.Trim().ToLowerInvariant();
 
             var accountExists = await dbContext.Users.AnyAsync(user =>
                 user.Username == username || user.Email == email);
@@ -106,7 +94,17 @@ namespace JWT.Controllers
             };
 
             dbContext.Users.Add(user);
-            await dbContext.SaveChangesAsync();
+
+            try
+            {
+                await dbContext.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                // The unique database indexes also protect against two
+                // simultaneous requests passing the pre-insert existence check.
+                return Conflict("A user with that username or email already exists.");
+            }
 
             return Ok(new
             {

@@ -1,12 +1,30 @@
-# Nodes
-node_modules/
+# Node.js
+**/node_modules/
+**/build/
+**/coverage/
 
-# .NET
-bin/
-obj/
+# .NET build output
+**/bin/
+**/obj/
 
-# VS Code
+# Visual Studio
+.vs/
+**/.vs/
+*.user
+*.suo
+*.cache
+
+# Editors
 .vscode/
 
-# Logs
+# Local configuration and secrets
+**/appsettings.*.local.json
+.env
+.env.*
+!.env.example
+secrets.json
+
+# Logs and operating-system files
 *.log
+.DS_Store
+Thumbs.db

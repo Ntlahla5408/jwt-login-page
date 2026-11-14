@@ -20,7 +20,7 @@ A learning project demonstrating JWT authentication and role-based authorization
 
 - .NET 8 SDK
 - SQL Server instance
-- Node.js and npm
+- Node.js 20 and npm
 
 ## Backend setup
 
@@ -35,11 +35,13 @@ dotnet user-secrets set "Jwt:Key" "REPLACE_WITH_A_RANDOM_SECRET_AT_LEAST_32_BYTE
 
 Generate a new signing key for your own environment. Never reuse the key that was previously committed to this repository.
 
-3. Apply the existing Entity Framework migration:
+3. Apply the Entity Framework migrations:
 
 ```bash
 dotnet ef database update
 ```
+
+The latest migration adds unique indexes for usernames and email addresses and limits the stored field lengths. If you already have user records, check for duplicate usernames/emails and values longer than the new limits before applying it; SQL Server cannot create the unique indexes while duplicates exist.
 
 4. (Optional) Provision the first administrator. Set all three values as user-secrets before the first run:
 
@@ -49,7 +51,7 @@ dotnet user-secrets set "BootstrapAdmin:Email" "admin@example.com"
 dotnet user-secrets set "BootstrapAdmin:Password" "A-unique-password-at-least-12-characters"
 ```
 
-The application creates this account only when the users table is empty. Remove the three bootstrap settings after the first successful startup. Subsequent accounts can be registered by an authenticated administrator.
+The application creates this account only when the users table is empty. The password must be at least 12 characters and no more than 72 UTF-8 bytes (the BCrypt input limit). Remove the three bootstrap settings after the first successful startup. Subsequent accounts can be registered by an authenticated administrator.
 
 5. Run the API:
 
@@ -64,7 +66,7 @@ Swagger is available in the Development environment.
 Open a second terminal in `jwtlogin`:
 
 ```bash
-npm install
+npm ci
 npm start
 ```
 
@@ -76,12 +78,14 @@ The current login component targets the local API at `https://localhost:7219`. I
 - `POST /api/Auth/register` — creates a user account and requires an administrator JWT.
 - The API validates token issuer, audience, lifetime and signing key.
 - Passwords are stored as BCrypt hashes, never as plain text.
+- Usernames and email addresses have database-level unique indexes.
 
 ## Security notes
 
 - The signing key and database connection string are not stored in tracked application settings.
 - Public self-registration is disabled; only an administrator can create accounts.
 - The initial administrator is provisioned from local secrets and only when the database has no users.
+- The React route guard improves navigation but is not an authorization boundary; protected API endpoints enforce authorization independently.
 - This is an educational authentication example, not a production identity platform. Add rate limiting, account lockout, email verification, password reset, audit logging, and stronger operational controls before production use.
 
 ## Current limitations

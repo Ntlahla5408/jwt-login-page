@@ -108,14 +108,13 @@ namespace JWT.Controllers
             dbContext.Users.Add(user);
             await dbContext.SaveChangesAsync();
 
-            return CreatedAtAction(
-                nameof(Register),
-                new
-                {
-                    userId = user.Id,
-                    username = user.Username,
-                    role = user.Role
-                });
+            return Ok(new
+            {
+                message = "User registered successfully.",
+                userId = user.Id,
+                username = user.Username,
+                role = user.Role
+            });
         }
 
         private string GenerateJwtToken(User user)

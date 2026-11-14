@@ -1,0 +1,48 @@
+name: Build
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, "fix/**"]
+
+jobs:
+  backend:
+    name: Build ASP.NET Core API
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore JWT/JWT/JWT.csproj
+
+      - name: Build API
+        run: dotnet build JWT/JWT/JWT.csproj --configuration Release --no-restore
+
+  frontend:
+    name: Build React client
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: jwtlogin/package-lock.json
+
+      - name: Install dependencies
+        working-directory: jwtlogin
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: jwtlogin
+        run: npm run build

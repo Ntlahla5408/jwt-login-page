@@ -15,7 +15,7 @@ namespace JWT.Entities
         public required string Email { get; set; }
 
         [Required]
-        [StringLength(128, MinimumLength = 12)]
+        [StringLength(72, MinimumLength = 12)]
         public required string Password { get; set; }
 
         [Required]

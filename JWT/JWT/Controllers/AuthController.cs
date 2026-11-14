@@ -1,7 +1,6 @@
-﻿using JWT.Data;
+using JWT.Data;
 using JWT.Entities;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -15,109 +14,114 @@ namespace JWT.Controllers
     [ApiController]
     public class AuthController : ControllerBase
     {
+        private static readonly string[] ValidRoles = { "Admin", "Doctor", "Assistant" };
         private readonly IConfiguration configuration;
         private readonly ApplicationDbContext dbContext;
 
-        public AuthController(ApplicationDbContext dbContext, IConfiguration configuration)
+        public AuthController(
+            ApplicationDbContext dbContext,
+            IConfiguration configuration)
         {
             this.dbContext = dbContext;
             this.configuration = configuration;
-
-            // Add a default user for testing
-            if (!dbContext.Users.Any())
-            {
-                dbContext.Users.Add(new User
-                {
-                    Id = Guid.NewGuid(),
-                    Username = "admin",
-                    Email = "admin@example.com",
-                    Password = HashPassword("password"),
-                    Role = "Admin"
-                });
-
-                dbContext.SaveChanges();
-            }
         }
 
         [HttpPost("login")]
-        public async Task<IActionResult> Login(LoginDto logindto)
+        [AllowAnonymous]
+        public async Task<IActionResult> Login(LoginDto loginDto)
         {
-            // Find user by username in database
+            if (string.IsNullOrWhiteSpace(loginDto.Username) ||
+                string.IsNullOrWhiteSpace(loginDto.Password))
+            {
+                return BadRequest("Username and password are required.");
+            }
+
+            var username = loginDto.Username.Trim();
             var user = await dbContext.Users
-                .FirstOrDefaultAsync(u => u.Username == logindto.Username);
+                .FirstOrDefaultAsync(existingUser => existingUser.Username == username);
 
-            if (user == null)
+            if (user == null || !BCrypt.Net.BCrypt.Verify(loginDto.Password, user.Password))
             {
-                return Unauthorized("Invalid credentials");
+                return Unauthorized("Invalid username or password.");
             }
 
-            // Verify password
-            if (!VerifyPassword(logindto.Password, user.Password))
-            {
-                return Unauthorized("Invalid credentials");
-            }
-
-            // Generate JWT token
             var token = GenerateJwtToken(user);
+
             return Ok(new
             {
-                token = token,
+                token,
                 username = user.Username,
                 role = user.Role
             });
         }
 
         [HttpPost("register")]
-        //[Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Register(AddUserDto addUser)
         {
-            // Basic validation
-            if (string.IsNullOrEmpty(addUser.Username) || string.IsNullOrEmpty(addUser.Password))
+            if (string.IsNullOrWhiteSpace(addUser.Username) ||
+                string.IsNullOrWhiteSpace(addUser.Email) ||
+                string.IsNullOrWhiteSpace(addUser.Password) ||
+                string.IsNullOrWhiteSpace(addUser.ConfirmPassword))
             {
-                return BadRequest("Username and password are required");
+                return BadRequest("Username, email and password are required.");
             }
 
-            if (addUser.Password != addUser.ConfirmPassword)
+            if (addUser.Password.Length < 12)
             {
-                return BadRequest("Passwords do not match");
+                return BadRequest("Password must contain at least 12 characters.");
             }
 
-
-            // Validate role
-            var validRoles = new[] { "Admin", "Doctor", "Assistant" };
-            if (!validRoles.Contains(addUser    .Role))
+            if (!string.Equals(addUser.Password, addUser.ConfirmPassword, StringComparison.Ordinal))
             {
-                return BadRequest("Invalid role. Must be: Admin, Doctor, or Assistant.");
+                return BadRequest("Passwords do not match.");
             }
 
-            // Hash the password
-            var passwordHash = HashPassword(addUser.Password);
+            var role = addUser.Role?.Trim();
+            if (string.IsNullOrWhiteSpace(role) ||
+                !ValidRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
+            {
+                return BadRequest("Role must be Admin, Doctor, or Assistant.");
+            }
 
-            // Create user
+            var username = addUser.Username.Trim();
+            var email = addUser.Email.Trim();
+
+            var accountExists = await dbContext.Users.AnyAsync(user =>
+                user.Username == username || user.Email == email);
+
+            if (accountExists)
+            {
+                return Conflict("A user with that username or email already exists.");
+            }
+
             var user = new User
             {
-                Username = addUser.Username,
-                Email = addUser.Email,
-                Password = passwordHash,
-                Role = addUser.Role
+                Id = Guid.NewGuid(),
+                Username = username,
+                Email = email,
+                Password = BCrypt.Net.BCrypt.HashPassword(addUser.Password),
+                Role = ValidRoles.First(validRole =>
+                    string.Equals(validRole, role, StringComparison.OrdinalIgnoreCase))
             };
 
-            // Save to database
             dbContext.Users.Add(user);
             await dbContext.SaveChangesAsync();
 
-            return Ok(new
-            {
-                message = "User registered successfully",
-                userId = user.Id,
-                username = user.Username,
-                role = user.Role
-            });
+            return CreatedAtAction(
+                nameof(Register),
+                new
+                {
+                    userId = user.Id,
+                    username = user.Username,
+                    role = user.Role
+                });
         }
 
         private string GenerateJwtToken(User user)
         {
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["Jwt:Key"]));
+            var key = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(configuration["Jwt:Key"]!));
             var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var claims = new[]
@@ -136,16 +140,6 @@ namespace JWT.Controllers
                 signingCredentials: credentials);
 
             return new JwtSecurityTokenHandler().WriteToken(token);
-        }
-
-        private string HashPassword(string password)
-        {
-            return BCrypt.Net.BCrypt.HashPassword(password);
-        }
-
-        private bool VerifyPassword(string password, string hashedPassword)
-        {
-            return BCrypt.Net.BCrypt.Verify(password, hashedPassword);
         }
     }
 }
